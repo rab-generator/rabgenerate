@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Pembuatan RAB - Program RT-Ku Terbaik</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        body { background-color: #f4f6f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .header { background: linear-gradient(135deg, #1e5799 0%,#207cca 50%,#7db9e8 100%); color: white; padding: 20px 0; margin-bottom: 30px; }
+        .card { box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; border: none; border-radius: 8px; }
+        .program-header { background-color: #e9ecef; padding: 12px; border-radius: 5px; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; }
+        .kegiatan-card { border: 1px solid #dee2e6; padding: 15px; border-radius: 5px; margin-bottom: 15px; background: #fff; }
+        .summary-box { background: #fff; padding: 20px; border-radius: 8px; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .total-amount { font-size: 24px; font-weight: bold; color: #198754; }
+        .loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); z-index: 9999; justify-content: center; align-items: center; flex-direction: column; }
+    </style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loading">
+    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+    <h5 class="mt-3 text-primary">Memproses File Excel...</h5>
+</div>
+
+<div class="header text-center shadow-sm">
+    <h2><i class="fas fa-calculator me-2"></i>Sistem RAB RT-Ku Terbaik</h2>
+    <p class="mb-0">Kabupaten Kutai Kartanegara</p>
+</div>
+
+<div class="container pb-5">
+    <div class="row">
+        <!-- Sidebar Identitas & Summary -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white fw-bold"><i class="fas fa-cog me-2"></i>Pengaturan & Identitas</div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Pagu Anggaran (Rp)</label>
+                        <input type="number" id="pagu_anggaran" class="form-control" value="150000000" onchange="calculateAll()">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small">Nama RT</label>
+                        <input type="text" id="rt_nama" class="form-control" placeholder="Contoh: RT 001">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small">Desa / Kelurahan</label>
+                        <input type="text" id="desa_nama" class="form-control" placeholder="Desa / Kelurahan">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small">Kecamatan</label>
+                        <input type="text" id="kecamatan_nama" class="form-control" placeholder="Kecamatan">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small">Ketua RT</label>
+                        <input type="text" id="ketua_nama" class="form-control" value="MUHAMMAD YOGA PRASETYA ILMI">
+                    </div>
+                </div>
+            </div>
+
+            <div class="summary-box mb-3">
+                <h6 class="text-muted text-uppercase mb-1">Total Usulan Anggaran</h6>
+                <div class="total-amount mb-2" id="grand_total">Rp 0</div>
+                <div class="progress mb-2" style="height: 12px;">
+                    <div id="progress_bar" class="progress-bar bg-success" role="progressbar" style="width: 0%;"></div>
+                </div>
+                <small class="text-muted" id="sisa_pagu">Sisa Anggaran: Rp 150.000.000</small>
+                <hr>
+                
+                <input type="file" id="file_import" accept=".xlsx" class="d-none" onchange="importExcel(event)">
+                <button onclick="document.getElementById('file_import').click()" class="btn btn-outline-primary w-100 fw-bold mb-2">
+                    <i class="fas fa-file-import me-2"></i>Import Data (xlsx)
+                </button>
+                <button onclick="exportToExcel()" class="btn btn-success w-100 fw-bold">
+                    <i class="fas fa-file-excel me-2"></i>Export ke xlsx
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content RAB -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header fw-bold">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div><i class="fas fa-edit me-2"></i>Penyusunan Rincian Belanja</div>
+                        <button class="btn btn-sm btn-outline-danger" onclick="initUI()">Reset Form</button>
+                    </div>
+                </div>
+                <div class="card-body" id="program_container"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const kamusProgram = [
+        {
+            id: "P1", nama: "Ketahanan Sosial", isInfra: false,
+            kegiatan: ["Bantuan penyediaan basis data dan profil RT", "Bantuan warga sakit tidak mampu", "Bantuan Ibu Bersalin tidak mampu", "Santunan kepada anak yatim", "Bantuan tanggap bencana", "Santunan kematian", "Bantuan warga miskin", "Bantuan petugas sosial kemasyarakatan dan keagamaan", "MBG Kukar Idaman Terbaik untuk balita dan lansia", "Sosialisasi Hukum dan tata tertib lingkungan", "Gotong Royong"]
+        },
+        {
+            id: "P2", nama: "Pemberdayaan Masyarakat", isInfra: false,
+            kegiatan: ["Pelatihan Ketrampilan warga", "Pelatihan pengelolaan keuangan", "Pemberdayaan Masyarakat terdiri atas pengurus RT, perempuan, pemuda, dsb", "Insentif pendekar idaman Terbaik RT", "Bantuan internet RT", "Mendukung kegiatan musyawarah masyarakat yg dilaksanakan LPM"]
+        },
+        {
+            id: "P3", nama: "Infrastruktur", isInfra: true,
+            kegiatan: ["Pengadaan sarana air bersih sederhana", "Rehab ringan rumah warga tidak layak huni", "Penerangan jalan lingkungan", "Pengadaan pos keamanan lingkungan sederhana", "Perbaikan lingkungan"]
+        },
+        {
+            id: "P4", nama: "Operasional", isInfra: false,
+            kegiatan: ["CCTV Lingkungan", "Alat Pemadam Kebakaran", "Operasional Lembaga RT", "Operasional Siskamling", "Pengadaan Laptop dan Printer bagi RT", "Pemeliharaan kendaraan operasional RT", "Insentif pengurus RT"]
+        }
+    ];
+
+    function formatRp(angka) { return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka); }
+    function parseRp(str) { return parseInt(str.replace(/[^0-9]/g, '')) || 0; }
+
+    const container = document.getElementById('program_container');
+    let kCounter = 0; let rCounter = 0;
+
+    // Build the initial blank UI
+    function initUI() {
+        container.innerHTML = '';
+        kamusProgram.forEach((prog, index) => {
+            const progDiv = document.createElement('div');
+            progDiv.className = 'mb-4';
+            progDiv.innerHTML = `
+                <div class="program-header" data-bs-toggle="collapse" data-bs-target="#col_${prog.id}">
+                    <div><i class="fas fa-folder text-warning me-2"></i> ${index+1}. ${prog.nama}</div>
+                    <div class="fw-bold text-primary" id="total_${prog.id}">Rp 0</div>
+                </div>
+                <div class="collapse show mt-3" id="col_${prog.id}">
+                    <div id="list_${prog.id}"></div>
+                    <button class="btn btn-sm btn-outline-primary mt-2" onclick="addKegiatan('${prog.id}', ${prog.isInfra})">
+                        <i class="fas fa-plus"></i> Tambah Kegiatan
+                    </button>
+                </div>
+            `;
+            container.appendChild(progDiv);
+        });
+        calculateAll();
+    }
+
+    function addKegiatan(progId, isInfra) {
+        kCounter++;
+        const kId = `K_${kCounter}`;
+        const prog = kamusProgram.find(p => p.id === progId);
+        
+        let opts = `<option value="">-- Pilih Kegiatan --</option>`;
+        prog.kegiatan.forEach(k => opts += `<option value="${k}">${k}</option>`);
+
+        let thKat = isInfra ? `<th width="20%">Kategori</th>` : ``;
+
+        const html = `
+            <div class="kegiatan-card shadow-sm" id="${kId}" data-isinfra="${isInfra}">
+                <div class="d-flex justify-content-between mb-2">
+                    <select class="form-select form-select-sm fw-bold border-secondary kegiatan-sel" style="width:85%">${opts}</select>
+                    <button class="btn btn-sm btn-danger" onclick="document.getElementById('${kId}').remove(); calculateAll();"><i class="fas fa-trash"></i></button>
+                </div>
+                <table class="table table-sm rincian-table mt-2 mb-1">
+                    <thead class="table-light">
+                        <tr>
+                            ${thKat}
+                            <th width="${isInfra? '25%' : '35%'}">Uraian Belanja</th>
+                            <th width="10%">Vol</th>
+                            <th width="15%">Satuan</th>
+                            <th width="20%">Harga Sat. (Rp)</th>
+                            <th width="10%">Hapus</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rincian_${kId}"></tbody>
+                </table>
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <button class="btn btn-sm btn-secondary" onclick="addRincian('${kId}', ${isInfra})"><i class="fas fa-plus"></i> Item</button>
+                    <div class="fw-bold small">Subtotal: <span class="text-primary" id="sub_${kId}">Rp 0</span></div>
+                </div>
+            </div>
+        `;
+        document.getElementById(`list_${progId}`).insertAdjacentHTML('beforeend', html);
+        addRincian(kId, isInfra);
+        return kId; // return id untuk keperluan import
+    }
+
+    function addRincian(kId, isInfra, data = null) {
+        rCounter++;
+        const rId = `R_${rCounter}`;
+        
+        // Data binding untuk Import
+        let defKat = data?.kat || "1";
+        let defUr = data?.uraian || "";
+        let defVol = data?.vol !== undefined ? data.vol : 1;
+        let defSat = data?.satuan || "";
+        let defHrg = data?.harga || 0;
+
+        const tdKat = isInfra ? 
+            `<td>
+                <select class="form-select form-select-sm kat-in">
+                    <option value="1" ${defKat=='1'?'selected':''}>1. Bahan</option>
+                    <option value="2" ${defKat=='2'?'selected':''}>2. Alat</option>
+                    <option value="3" ${defKat=='3'?'selected':''}>3. Upah</option>
+                    <option value="4" ${defKat=='4'?'selected':''}>4. Lainnya</option>
+                </select>
+            </td>` : ``;
+
+        const tr = document.createElement('tr');
+        tr.id = rId;
+        tr.innerHTML = `
+            ${tdKat}
+            <td><input type="text" class="form-control form-control-sm ur-in" placeholder="Nama barang/jasa" value="${defUr}"></td>
+            <td><input type="number" class="form-control form-control-sm vol-in" value="${defVol}" min="1" onchange="calculateAll()"></td>
+            <td><input type="text" class="form-control form-control-sm sat-in" placeholder="Pkt/Ls/Org" value="${defSat}"></td>
+            <td><input type="text" class="form-control form-control-sm hrg-in" value="${new Intl.NumberFormat('id-ID').format(defHrg)}" onkeyup="fmt(this)" onchange="calculateAll()"></td>
+            <td><button class="btn btn-sm btn-outline-danger" onclick="document.getElementById('${rId}').remove(); calculateAll();"><i class="fas fa-times"></i></button></td>
+        `;
+        document.getElementById(`rincian_${kId}`).appendChild(tr);
+    }
+
+    function fmt(elm) {
+        let val = parseRp(elm.value);
+        elm.value = new Intl.NumberFormat('id-ID').format(val);
+        calculateAll();
+    }
+
+    function calculateAll() {
+        let grandTotal = 0;
+        let limit = parseFloat(document.getElementById('pagu_anggaran').value) || 150000000;
+        
+        kamusProgram.forEach(prog => {
+            let progTotal = 0;
+            const cards = document.querySelectorAll(`#list_${prog.id} .kegiatan-card`);
+            cards.forEach(card => {
+                let subTotal = 0;
+                card.querySelectorAll('tbody tr').forEach(row => {
+                    let vol = parseFloat(row.querySelector('.vol-in').value) || 0;
+                    let hrg = parseRp(row.querySelector('.hrg-in').value) || 0;
+                    subTotal += (vol * hrg);
+                });
+                card.querySelector(`[id^="sub_"]`).innerText = formatRp(subTotal);
+                progTotal += subTotal;
+            });
+            document.getElementById(`total_${prog.id}`).innerText = formatRp(progTotal);
+            grandTotal += progTotal;
+        });
+        
+        document.getElementById('grand_total').innerText = formatRp(grandTotal);
+        document.getElementById('sisa_pagu').innerText = `Sisa Anggaran: ${formatRp(limit - grandTotal)}`;
+        
+        let pct = (grandTotal / limit) * 100;
+        let pBar = document.getElementById('progress_bar');
+        pBar.style.width = Math.min(pct, 100) + '%';
+        pBar.className = pct > 100 ? 'progress-bar bg-danger' : 'progress-bar bg-success';
+    }
+
+    // ==========================================
+    // FUNGSI IMPORT EXCEL (MEMBACA DATA KE UI)
+    // ==========================================
+    async function importExcel(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        document.getElementById('loading').style.display = 'flex';
+        initUI(); // Reset UI sebelum memuat data
+
+        try {
+            const wb = new ExcelJS.Workbook();
+            const buffer = await file.arrayBuffer();
+            await wb.xlsx.load(buffer);
+
+            // 1. Baca Identitas dari Sheet Rekap RAB
+            const wsRekap = wb.getWorksheet('Rekap RAB (Form 13)');
+            if (wsRekap) {
+                const getVal = (cellStr) => wsRekap.getCell(cellStr).value ? wsRekap.getCell(cellStr).value.toString().replace(': ', '').trim() : '';
+                document.getElementById('rt_nama').value = getVal('C4');
+                document.getElementById('desa_nama').value = getVal('C5');
+                document.getElementById('kecamatan_nama').value = getVal('C6');
+                // Mengambil Ketua RT (biasanya di baris terakhir, kolom E)
+                for(let i = wsRekap.rowCount; i > 0; i--) {
+                    let val = wsRekap.getCell(`E${i}`).value;
+                    if(val && val.toString().startsWith('(') && val.toString().endsWith(')')) {
+                        document.getElementById('ketua_nama').value = val.toString().replace(/[()]/g, '').trim();
+                        break;
+                    }
+                }
+            }
+
+            // 2. Fungsi Parser Sheet Detail
+            const parseDetailSheet = (sheetName, isInfra) => {
+                const ws = wb.getWorksheet(sheetName);
+                if (!ws) return;
+
+                let currProgId = null;
+                let currKegId = null;
+
+                ws.eachRow((row, rowNumber) => {
+                    let c1 = row.getCell(1).value; let c2 = row.getCell(2).value; let c3 = row.getCell(3).value;
+                    let c4 = row.getCell(4).value; let c5 = row.getCell(5).value;
+
+                    // Deteksi Header Program
+                    if (c2 === 'Program' && c3) {
+                        let progName = c3.toString().replace(': ', '').trim();
+                        let prog = kamusProgram.find(p => p.nama === progName);
+                        if (prog) currProgId = prog.id;
+                    }
+                    // Deteksi Header Kegiatan
+                    else if (c2 === 'Kegiatan' && c3 && currProgId) {
+                        let kegName = c3.toString().replace(': ', '').trim();
+                        currKegId = addKegiatan(currProgId, isInfra);
+                        
+                        let card = document.getElementById(currKegId);
+                        card.querySelector('.kegiatan-sel').value = kegName;
+                        card.querySelector('tbody').innerHTML = ''; // Hapus row default
+                    }
+                    // Deteksi Baris Rincian Belanja
+                    else if (currKegId && c1 && c2) {
+                        let strC1 = c1.toString().trim();
+                        let strC2 = c2.toString().trim().toUpperCase();
+
+                        // Abaikan Header Tabel, Kategori Induk Infra, dan Baris Total
+                        if (strC1 !== 'No' && !strC2.includes('SUB TOTAL') && !strC2.includes('TOTAL KESELURUHAN') && !strC2.includes('SUBTOTAL')) {
+                            
+                            // Di sheet infrastruktur, abaikan baris yang hanya angka kategori (1, 2, 3, 4) tanpa detail volume/harga
+                            if (isInfra && strC1.indexOf('.') === -1) return;
+
+                            let kat = isInfra ? strC1.split('.')[0] : "1";
+                            let ur = c2; let vol = c3; let sat = c4; let hrg = c5;
+
+                            addRincian(currKegId, isInfra, { kat: kat, uraian: ur, vol: vol, satuan: sat, harga: hrg });
+                        }
+                    }
+                });
+            };
+
+            parseDetailSheet('RAB Detail Infrastruktur', true);
+            parseDetailSheet('RAB Detail Non-Infrastruktur', false);
+
+            calculateAll(); // Update total setelah semuanya dimuat
+            event.target.value = ''; // Reset input file
+
+        } catch (error) {
+            console.error(error);
+            alert('Terjadi kesalahan saat membaca file Excel. Pastikan file tersebut dihasilkan dari sistem ini.');
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+        }
+    }
+
+    // ==========================================
+    // FUNGSI EXPORT KE EXCEL
+    // ==========================================
+    async function exportToExcel() {
+        const wb = new ExcelJS.Workbook();
+        const rt = document.getElementById('rt_nama').value || '.....';
+        const desa = document.getElementById('desa_nama').value || '.....';
+        const kec = document.getElementById('kecamatan_nama').value || '.....';
+        const ketua = document.getElementById('ketua_nama').value || '.....';
+        
+        const titleStyle = { font: { bold: true, size: 12 }, alignment: { horizontal: 'center' } };
+        const headerStyle = { font: { bold: true }, border: { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9ECEF' } }, alignment: { horizontal: 'center' } };
+
+        // SHEET 1: REKAP RAB (Form 13)
+        const wsR = wb.addWorksheet('Rekap RAB (Form 13)');
+        wsR.getColumn(1).width = 5; wsR.getColumn(2).width = 40; wsR.getColumn(3).width = 10;
+        wsR.getColumn(4).width = 10; wsR.getColumn(5).width = 20; wsR.getColumn(6).width = 25;
+        wsR.mergeCells('A1:F1'); wsR.getCell('A1').value = 'REKAP RENCANA ANGGARAN BIAYA (RAB)'; wsR.getCell('A1').style = titleStyle;
+        wsR.mergeCells('A2:F2'); wsR.getCell('A2').value = 'PROGRAM RT-KU TERBAIK'; wsR.getCell('A2').style = titleStyle;
+        wsR.getCell('A4').value = 'RT'; wsR.getCell('C4').value = `: ${rt}`;
+        wsR.getCell('A5').value = 'Desa/Kelurahan'; wsR.getCell('C5').value = `: ${desa}`;
+        wsR.getCell('A6').value = 'Kecamatan'; wsR.getCell('C6').value = `: ${kec}`;
+        const headR = wsR.addRow(['No', 'Uraian', 'Volume', 'Satuan', 'Harga Satuan (Rp)', 'Total Jumlah (Rp)']);
+        headR.eachCell(c => c.style = headerStyle);
+        
+        let grandFormula = [];
+
+        // SHEET 2 & 3: RAB DETAIL 
+        const wsInfra = wb.addWorksheet('RAB Detail Infrastruktur');
+        wsInfra.getColumn(1).width = 5; wsInfra.getColumn(2).width = 40; wsInfra.getColumn(3).width = 10; wsInfra.getColumn(4).width = 10; wsInfra.getColumn(5).width = 20; wsInfra.getColumn(6).width = 25;
+        wsInfra.mergeCells('A1:F1'); wsInfra.getCell('A1').value = 'RENCANA ANGGARAN BIAYA (RAB) DETAIL KEGIATAN INFRASTRUKTUR'; wsInfra.getCell('A1').style = titleStyle;
+        wsInfra.getCell('A3').value = 'RT'; wsInfra.getCell('C3').value = `: ${rt}`;
+        wsInfra.getCell('A4').value = 'Desa/Kelurahan'; wsInfra.getCell('C4').value = `: ${desa}`;
+        wsInfra.getCell('A5').value = 'Kecamatan'; wsInfra.getCell('C5').value = `: ${kec}`;
+
+        const wsNonInfra = wb.addWorksheet('RAB Detail Non-Infrastruktur');
+        wsNonInfra.getColumn(1).width = 5; wsNonInfra.getColumn(2).width = 40; wsNonInfra.getColumn(3).width = 10; wsNonInfra.getColumn(4).width = 10; wsNonInfra.getColumn(5).width = 20; wsNonInfra.getColumn(6).width = 25;
+        wsNonInfra.mergeCells('A1:F1'); wsNonInfra.getCell('A1').value = 'RENCANA ANGGARAN BIAYA (RAB) DETAIL KEGIATAN NON INFRASTRUKTUR'; wsNonInfra.getCell('A1').style = titleStyle;
+        wsNonInfra.getCell('A3').value = 'RT'; wsNonInfra.getCell('C3').value = `: ${rt}`;
+        wsNonInfra.getCell('A4').value = 'Desa/Kelurahan'; wsNonInfra.getCell('C4').value = `: ${desa}`;
+        wsNonInfra.getCell('A5').value = 'Kecamatan'; wsNonInfra.getCell('C5').value = `: ${kec}`;
+
+        kamusProgram.forEach((prog, idx) => {
+            let rowP = wsR.addRow([idx+1, prog.nama, '', '', '', '']);
+            rowP.font = {bold:true}; rowP.eachCell(c => c.border = {top:{style:'thin'},left:{style:'thin'},bottom:{style:'thin'},right:{style:'thin'}});
+            
+            const cards = document.querySelectorAll(`#list_${prog.id} .kegiatan-card`);
+            let count = 1;
+            let subtotals = [];
+
+            cards.forEach(card => {
+                let isInfra = card.getAttribute('data-isinfra') === 'true';
+                let wsActive = isInfra ? wsInfra : wsNonInfra;
+                let sheetNameRef = isInfra ? 'RAB Detail Infrastruktur' : 'RAB Detail Non-Infrastruktur';
+                let namaKeg = card.querySelector('.kegiatan-sel').value || 'Belum Dipilih';
+                
+                wsActive.addRow([]); 
+                wsActive.addRow(['', 'Program', `: ${prog.nama}`]).font = {bold:true};
+                wsActive.addRow(['', 'Kegiatan', `: ${namaKeg}`]).font = {bold:true};
+                
+                let headD = wsActive.addRow(['No', 'Uraian Belanja', 'Volume', 'Satuan', 'Harga Satuan', 'Total Jumlah']);
+                headD.eachCell(c => c.style = headerStyle);
+                
+                let startRowD = wsActive.rowCount + 1;
+                let rows = card.querySelectorAll('tbody tr');
+                
+                if(!isInfra) {
+                    let rCount = 1;
+                    rows.forEach(r => {
+                        let dr = wsActive.addRow([
+                            rCount, r.querySelector('.ur-in').value, parseFloat(r.querySelector('.vol-in').value)||0,
+                            r.querySelector('.sat-in').value, parseRp(r.querySelector('.hrg-in').value)||0, 0
+                        ]);
+                        dr.getCell(5).numFmt = '#,##0'; dr.getCell(6).numFmt = '#,##0';
+                        dr.getCell(6).value = { formula: `C${dr.number}*E${dr.number}` };
+                        dr.eachCell(c => c.border = {top:{style:'thin'},left:{style:'thin'},bottom:{style:'thin'},right:{style:'thin'}});
+                        rCount++;
+                    });
+                } else {
+                    const katMap = {"1": "Bahan", "2": "Alat", "3": "Upah", "4": "Lainnya"};
+                    const grouped = {"1": [], "2": [], "3": [], "4": []};
+                    rows.forEach(r => { grouped[r.querySelector('.kat-in').value].push(r); });
+
+                    Object.keys(grouped).forEach(kKey => {
+                        if(grouped[kKey].length > 0) {
+                            let headKat = wsActive.addRow([kKey, katMap[kKey], '', '', '', '']);
+                            headKat.font = {bold:true}; headKat.eachCell(c => c.border = {top:{style:'thin'},left:{style:'thin'},bottom:{style:'thin'},right:{style:'thin'}});
+                            let subStart = wsActive.rowCount + 1;
+                            
+                            grouped[kKey].forEach((r, idx2) => {
+                                let dr = wsActive.addRow([
+                                    `${kKey}.${idx2+1}`, r.querySelector('.ur-in').value, parseFloat(r.querySelector('.vol-in').value)||0,
+                                    r.querySelector('.sat-in').value, parseRp(r.querySelector('.hrg-in').value)||0, 0
+                                ]);
+                                dr.getCell(5).numFmt = '#,##0'; dr.getCell(6).numFmt = '#,##0';
+                                dr.getCell(6).value = { formula: `C${dr.number}*E${dr.number}` };
+                                dr.eachCell(c => c.border = {top:{style:'thin'},left:{style:'thin'},bottom:{style:'thin'},right:{style:'thin'}});
+                            });
+                            
+                            let subTotRow = wsActive.addRow(['', `SUB TOTAL ${kKey}`, '', '', '', { formula: `SUM(F${subStart}:F${wsActive.rowCount})` }]);
+                            subTotRow.font = {bold:true, italic:true}; subTotRow.getCell(6).numFmt = '#,##0';
+                            subTotRow.eachCell({includeEmpty:true}, (c,i) => {if(i<=6) c.border={top:{style:'thin'},left:{style:'thin'},bottom:{style:'thin'},right:{style:'thin'}}});
+                        }
+                    });
+                }
+                
+                let totalRowD = wsActive.addRow(['', 'TOTAL KESELURUHAN', '', '', '', { formula: `SUM(F${startRowD}:F${wsActive.rowCount})` }]);
+                if(isInfra) { totalRowD.getCell(6).value = { formula: `SUMIF(B${startRowD}:B${wsActive.rowCount-1},"SUB TOTAL*",F${startRowD}:F${wsActive.rowCount-1})` }; }
+                totalRowD.font = {bold:true}; totalRowD.getCell(6).numFmt = '#,##0';
+                totalRowD.eachCell({includeEmpty:true}, (c, i) => { if(i<=6) c.border = {top:{style:'thin'},left:{style:'thin'},bottom:{style:'thin'},right:{style:'thin'}}; });
+
+                let rowKeg = wsR.addRow([`${idx+1}.${count}`, namaKeg, '', '', '', 0]);
+                rowKeg.getCell(6).value = { formula: `'${sheetNameRef}'!F${totalRowD.number}` };
+                rowKeg.getCell(6).numFmt = '#,##0';
+                rowKeg.eachCell(c => c.border = {top:{style:'thin'},left:{style:'thin'},bottom:{style:'thin'},right:{style:'thin'}});
+                
+                subtotals.push(`F${rowKeg.number}`);
+                count++;
+            });
+
+            let rowSub = wsR.addRow(['', `SUB TOTAL ${idx+1}`, '', '', '', subtotals.length > 0 ? {formula: subtotals.join('+')} : 0]);
+            rowSub.eachCell(c => { c.font = {bold:true}; c.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFFFF2CC'}}; c.border = {top:{style:'thin'},left:{style:'thin'},bottom:{style:'thin'},right:{style:'thin'}}; });
+            rowSub.getCell(6).numFmt = '#,##0';
+            grandFormula.push(`F${rowSub.number}`);
+        });
+
+        let rowG = wsR.addRow(['', 'TOTAL KESELURUHAN (1+2+3+4)', '', '', '', grandFormula.length > 0 ? {formula: grandFormula.join('+')} : 0]);
+        rowG.eachCell(c => { c.font = {bold:true}; c.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFD9EAD3'}}; c.border = {top:{style:'thin'},left:{style:'thin'},bottom:{style:'thin'},right:{style:'thin'}}; });
+        rowG.getCell(6).numFmt = '#,##0';
+
+        wsR.addRow([]); wsR.addRow([]);
+        wsR.getCell(`E${wsR.rowCount}`).value = `${kec}, ........................ 2026`;
+        wsR.getCell(`B${wsR.rowCount+1}`).value = 'Mengetahui,'; wsR.getCell(`E${wsR.rowCount}`).value = 'Dibuat oleh,';
+        wsR.getCell(`B${wsR.rowCount+1}`).value = 'Sekretaris RT'; wsR.getCell(`E${wsR.rowCount}`).value = 'Ketua RT';
+        wsR.getCell(`B${wsR.rowCount+4}`).value = '( .......................................... )'; wsR.getCell(`E${wsR.rowCount}`).value = `( ${ketua} )`;
+
+        const buf = await wb.xlsx.writeBuffer();
+        saveAs(new Blob([buf]), `RAB_RT-Ku_Terbaik_${rt}.xlsx`);
+    }
+
+    // Inisialisasi awal UI
+    initUI();
+</script>
+</body>
+</html>
